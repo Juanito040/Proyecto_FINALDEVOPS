@@ -22,8 +22,6 @@
                 deviceHistoryService
             );
 
-            const logger = getLogger();
-
             this.app = new Elysia()
                 .use(cors({
                     origin: [
@@ -45,6 +43,7 @@
                     const duration = Date.now() - startTime;
                     const url = new URL(request.url);
 
+                    const logger = getLogger();
                     logger.info('HTTP Request', {
                         method: request.method,
                         path: url.pathname,
@@ -59,6 +58,7 @@
                     const duration = Date.now() - startTime;
                     const url = new URL(request.url);
 
+                    const logger = getLogger();
                     logger.error('HTTP Error', error instanceof Error ? error : undefined, {
                         method: request.method,
                         path: url.pathname,
