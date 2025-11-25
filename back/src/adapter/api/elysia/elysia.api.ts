@@ -3,6 +3,36 @@
     import openapi from "@elysiajs/openapi";
     import Elysia from "elysia";
     import { cors } from "@elysiajs/cors";
+    import { getLogger } from "@/core/utils/logger";
+
+    // Plugin de logging para Axiom
+    const loggingPlugin = new Elysia()
+        .derive(({ request }) => {
+            return {
+                startTime: Date.now()
+            };
+        })
+        .onAfterHandle(({ request, set, startTime }) => {
+            const duration = Date.now() - (startTime || Date.now());
+            const url = new URL(request.url);
+
+            try {
+                const logger = getLogger();
+                logger.info(`${request.method} ${url.pathname}`, {
+                    method: request.method,
+                    path: url.pathname,
+                    url: url.pathname,
+                    statusCode: set.status || 200,
+                    executionTime: `${duration}ms`,
+                    userAgent: request.headers.get('user-agent') || 'unknown',
+                    ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+                    origin: request.headers.get('origin') || 'direct',
+                    service: 'device-management-api'
+                });
+            } catch (error) {
+                console.error('Logging error:', error);
+            }
+        });
 
     export class ElysiaApiAdapter {
         private controller: Controller;
@@ -32,6 +62,7 @@
                     allowedHeaders: ["*"]
                 }))
                 .use(openapi({}))
+                .use(loggingPlugin)
                 .get("/", () => "Servidor funcionando correctamente 🚀")
                 .use(this.controller.routes());
         }
