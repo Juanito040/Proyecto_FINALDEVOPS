@@ -254,7 +254,10 @@ export const auth = betterAuth({
     user: {
         additionalFields: {}
     },
-    trustedOrigins: ["http://localhost:5173"],
+    trustedOrigins: [
+        "http://localhost:5173",
+        "https://device-frontend-app.azurewebsites.net"
+    ],
     secret: process.env.BETTER_AUTH_SECRET!,
     baseURL: process.env.BETTER_AUTH_URL!
 });
