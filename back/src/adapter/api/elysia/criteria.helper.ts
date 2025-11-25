@@ -20,29 +20,28 @@ export class CriteriaHelper {
     const criteria = newDeviceCriteria()
     const filters: DeviceFilterQuery[] = []
 
-    for (const key in queryParams) {
-      const filter = this.parseFilterFromEntry(key, queryParams[key])
-      if (filter) {
-        filters.push(filter)
-      }
+   for (const key of Object.keys(queryParams) as (keyof CriteriaQueryParams)[]) {
+  const value = queryParams[key]
+  
+  const filter = this.parseFilterFromEntry(key, value)
+  if (filter) filters.push(filter)
 
-      const sort = this.parseSortFromEntry(key, queryParams[key])
-      if (sort) {
-        criteria.sortBy = sort
-      }
+  const sort = this.parseSortFromEntry(key, value)
+  if (sort) criteria.sortBy = sort
 
-      if (key === "limit" && typeof queryParams[key] === "string") {
-        criteria.limit = parseInt(queryParams[key] as string, 10)
-      }
+  if (key === "limit" && typeof value === "string") {
+    criteria.limit = parseInt(value, 10)
+  }
 
-      if (key === "offset" && typeof queryParams[key] === "string") {
-        criteria.offset = parseInt(queryParams[key] as string, 10)
-      }
+  if (key === "offset" && typeof value === "string") {
+    criteria.offset = parseInt(value, 10)
+  }
 
-      if (key === "search" && typeof queryParams[key] === "string") {
-        criteria.search = queryParams[key] as string
-      }
-    }
+  if (key === "search" && typeof value === "string") {
+    criteria.search = value
+  }
+}
+
 
     if (filters.length > 0) {
       criteria.filterBy = filters[0]

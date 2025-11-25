@@ -5,7 +5,9 @@ export type DeviceCriteria = {
   filterBy?: DeviceFilterQuery
   limit?: number
   offset?: number
+  search?: string
 }
+
 
 export type DeviceSortQuery = {
   field: string
