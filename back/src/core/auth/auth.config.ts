@@ -252,9 +252,10 @@ export const auth = betterAuth({
         }
     },
     advanced: {
-        cookieOptions: {
+        defaultCookieAttributes: {
             sameSite: 'none',
-            secure: true
+            secure: true,
+            partitioned: true
         }
     },
     user: {
