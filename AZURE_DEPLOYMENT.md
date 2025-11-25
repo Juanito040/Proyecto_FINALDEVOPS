@@ -24,7 +24,7 @@
 - **Nombre**: `devicemanagementacr`
 - **Login Server**: `devicemanagementacr.azurecr.io`
 - **Admin User**: `devicemanagementacr`
-- **Admin Password**: `D+jF/Hc/NIB/yxQsl3nANSXVLgso+UOJxE/c0oO11A+ACRAD+OIb`
+- **Admin Password**: `[STORED IN AZURE - Use 'az acr credential show --name devicemanagementacr']`
 
 ### Web App - Backend
 - **Nombre**: `device-backend-app`
