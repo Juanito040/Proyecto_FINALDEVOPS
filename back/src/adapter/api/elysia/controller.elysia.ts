@@ -15,78 +15,65 @@ export class Controller {
     ) {}
 
     public routes() {
-        return new Elysia({
-            prefix: "/api"
-        })
-            // Rutas de autenticación (públicas)
-            .all("/auth/*", ({ request }) => auth.handler(request))
+    return (app: Elysia) =>
+        app
+            .group("/api", api =>
+                api
+                    .all("/auth/*", ({ request }) => auth.handler(request))
 
-            // Rutas protegidas - requieren autenticación
-            .use(authMiddleware)
-            .guard({
-                query: CRITERIA_QUERY_PARAMS_SCHEMA
-            })
-            .post(
-                "/computers/checkin",
-                ({ body }) => this.checkinComputer(body),
-                {
-                    type: "multipart/form-data",
-                    body: COMPUTER_REQUEST_SCHEMA
-                }
+                    .use(authMiddleware)
+
+                    .guard({ query: CRITERIA_QUERY_PARAMS_SCHEMA })
+
+                    .post(
+                        "/computers/checkin",
+                        ({ body }) => this.checkinComputer(body),
+                        {
+                            type: "multipart/form-data",
+                            body: COMPUTER_REQUEST_SCHEMA
+                        }
+                    )
+                    .post(
+                        "/medicaldevices/checkin",
+                        ({ body }) => this.checkinMedicalDevice(body),
+                        {
+                            body: MED_DEVICE_REQUEST_SCHEMA
+                        }
+                    )
+                    .post(
+                        "/computers/frequent",
+                        ({ body }) => this.registerFrequentComputer(body),
+                        {
+                            type: "multipart/form-data",
+                            body: COMPUTER_REQUEST_SCHEMA
+                        }
+                    )
+                    .get("/computers", ({ query }) => this.getComputers(query))
+                    .get("/medicaldevices", ({ query }) => this.getMedicalDevices(query))
+                    .get("/computers/frequent", ({ query }) => this.getFrequentComputers(query))
+                    .get("/devices/entered", ({ query }) => this.getEnteredDevices(query))
+                    .get("/devices/history", ({ query }) => this.getDeviceHistory(query))
+
+                    .guard({
+                        params: z.object({
+                            id: z.string()
+                        })
+                    })
+                    .patch(
+                        "/computers/frequent/checkin/:id",
+                        ({ params }) => this.checkinFrequentComputer(params.id)
+                    )
+                    .patch(
+                        "/devices/checkout/:id",
+                        ({ params }) => this.checkoutDevice(params.id)
+                    )
+                    .get(
+                        "/computers/frequent/:id/qrcodes",
+                        ({ params }) => this.getFrequentComputerQRCodes(params.id)
+                    )
             )
-            .post(
-                "/medicaldevices/checkin",
-                ({ body }) => this.checkinMedicalDevice(body),
-                {
-                    body: MED_DEVICE_REQUEST_SCHEMA
-                }
-            )
-            .post(
-                "/computers/frequent",
-                ({ body }) => this.registerFrequentComputer(body),
-                {
-                    type: "multipart/form-data",
-                    body: COMPUTER_REQUEST_SCHEMA
-                }
-            )
-            .get(
-                "/computers",
-                ({ query }) => this.getComputers(query)
-            )
-            .get(
-                "/medicaldevices",
-                ({ query }) =>  this.getMedicalDevices(query)
-            )
-            .get(
-                "/computers/frequent",
-                ({ query }) => this.getFrequentComputers(query)
-            )
-            .get(
-                "/devices/entered",
-                ({ query }) => this.getEnteredDevices(query)
-            )
-            .get(
-                "/devices/history",
-                ({ query }) => this.getDeviceHistory(query)
-            )
-            .guard({
-                params: z.object({
-                    id: z.uuid()
-                })
-            })
-            .patch(
-                "/computers/frequent/checkin/:id",
-                ({ params: { id }}) => this.checkinFrequentComputer(id)
-            )
-            .patch(
-                "/devices/checkout/:id",
-                ({ params: { id }}) => this.checkoutDevice(id)
-            )
-            .get(
-                "/computers/frequent/:id/qrcodes",
-                ({ params: { id }}) => this.getFrequentComputerQRCodes(id)
-            )
-    }
+}
+
 
     async checkinComputer(request: ComputerRequest): Promise<Computer> {
         return this.computerService.checkinComputer(request)
