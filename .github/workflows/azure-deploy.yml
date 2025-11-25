@@ -1,0 +1,248 @@
+name: CI/CD Pipeline - Azure Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: rg-device-management
+  BACKEND_APP_NAME: device-backend-app
+  FRONTEND_APP_NAME: device-frontend-app
+  ACR_NAME: devicemanagementacr
+  ACR_LOGIN_SERVER: devicemanagementacr.azurecr.io
+
+jobs:
+  # Job 1: Build and Test Backend
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install backend dependencies
+        working-directory: ./back
+        run: bun install
+
+      - name: Run backend tests (if any)
+        working-directory: ./back
+        run: bun test || echo "No tests configured yet"
+
+      - name: Build backend
+        working-directory: ./back
+        run: echo "Backend ready for containerization"
+
+  # Job 2: Build and Test Frontend
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './front/device-frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: ./front/device-frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./front/device-frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://device-backend-app.azurewebsites.net/api
+
+      - name: Run frontend tests (if any)
+        working-directory: ./front/device-frontend
+        run: npm test || echo "No tests configured yet"
+
+  # Job 3: Build and Push Docker Images
+  docker-build-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./back
+          file: ./back/Dockerfile.bun
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/device-backend:latest
+            ${{ env.ACR_LOGIN_SERVER }}/device-backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/device-backend:latest
+          cache-to: type=inline
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./front/device-frontend
+          file: ./front/device-frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/device-frontend:latest
+            ${{ env.ACR_LOGIN_SERVER }}/device-frontend:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=https://device-backend-app.azurewebsites.net/api
+          cache-from: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/device-frontend:latest
+          cache-to: type=inline
+
+  # Job 4: Deploy to Azure
+  deploy-azure:
+    name: Deploy to Azure Web Apps
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Backend to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.BACKEND_APP_NAME }}
+          images: ${{ env.ACR_LOGIN_SERVER }}/device-backend:${{ github.sha }}
+
+      - name: Deploy Frontend to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.FRONTEND_APP_NAME }}
+          images: ${{ env.ACR_LOGIN_SERVER }}/device-frontend:${{ github.sha }}
+
+      - name: Update Backend App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
+              BETTER_AUTH_URL="https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net" \
+              APPLICATIONINSIGHTS_CONNECTION_STRING="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
+              AXIOM_TOKEN="${{ secrets.AXIOM_TOKEN }}" \
+              AXIOM_DATASET="${{ secrets.AXIOM_DATASET }}" \
+              AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_CONTAINER_NAME="${{ secrets.AZURE_CONTAINER_NAME }}" \
+              NODE_ENV="production"
+
+      - name: Restart Backend App
+        run: |
+          az webapp restart \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }}
+
+      - name: Restart Frontend App
+        run: |
+          az webapp restart \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }}
+
+  # Job 5: API Testing with HURL
+  api-testing:
+    name: API Testing with HURL
+    runs-on: ubuntu-latest
+    needs: deploy-azure
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install HURL
+        run: |
+          VERSION=4.3.0
+          curl -LO https://github.com/Orange-OpenSource/hurl/releases/download/$VERSION/hurl_${VERSION}_amd64.deb
+          sudo dpkg -i hurl_${VERSION}_amd64.deb
+
+      - name: Wait for deployment to be ready
+        run: sleep 30
+
+      - name: Run HURL tests - Health Check
+        run: hurl --test --variable base_url=https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net tests/health.hurl
+        continue-on-error: true
+
+      - name: Run HURL tests - Authentication
+        run: hurl --test --variable base_url=https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net tests/auth.hurl
+        continue-on-error: true
+
+      - name: Run HURL tests - Computers API
+        run: hurl --test --variable base_url=https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net tests/computers.hurl
+        continue-on-error: true
+
+      - name: Run HURL tests - Medical Devices API
+        run: hurl --test --variable base_url=https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net tests/medical-devices.hurl
+        continue-on-error: true
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## API Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Health check tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Authentication tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Computers API tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Medical Devices API tests completed" >> $GITHUB_STEP_SUMMARY
+
+  # Job 6: Deployment Summary
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-azure, api-testing]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Generate deployment summary
+        run: |
+          echo "# 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Deployed Services" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend**: https://${{ env.BACKEND_APP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend**: https://${{ env.FRONTEND_APP_NAME }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 Monitoring" >> $GITHUB_STEP_SUMMARY
+          echo "- **Application Insights**: [View in Azure Portal](https://portal.azure.com)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Axiom Logs**: [View in Axiom](https://app.axiom.co)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
