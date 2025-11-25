@@ -2,7 +2,7 @@ import { ComputerService, DeviceService, MedicalDeviceService, DeviceHistoryServ
 import { Controller } from "./controller.elysia";
 import openapi from "@elysiajs/openapi";
 import Elysia from "elysia";
-import { cors } from "@elysiajs/cors"; // 👈 Importa el plugin de CORS
+import { cors } from "@elysiajs/cors";
 
 export class ElysiaApiAdapter {
     private controller: Controller;
@@ -23,9 +23,12 @@ export class ElysiaApiAdapter {
 
         this.app = new Elysia()
             .use(cors({
-                origin: "http://localhost:5173", // 👈 Permite peticiones desde tu frontend
-                methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], // 👈 PATCH agregado
-                credentials: true, // 👈 Permite envío de cookies
+                origin: [
+                    "https://device-frontend-app.azurewebsites.net", // ⭐ Frontend en Azure
+                    "http://localhost:5173" // ⭐ Para desarrollo local
+                ],
+                methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                credentials: true,
                 allowedHeaders: ["Content-Type", "Authorization"]
             }))
             .use(openapi({}))
