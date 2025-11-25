@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Activity, Laptop } from 'lucide-react';
 import DataTable from './DataTable';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
 export default function DeviceHistory() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
@@ -16,7 +18,7 @@ export default function DeviceHistory() {
   const fetchHistory = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3000/api/devices/history', {
+      const response = await fetch(`${API_BASE}/devices/history`, {
         credentials: 'include'
       });
 
