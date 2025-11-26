@@ -13,6 +13,7 @@ const logger = initializeLogger({
 });
 
 logger.info('🚀 Application starting...', {
+  environment: process.env.NODE_ENV || 'development',
   nodeEnv: process.env.NODE_ENV,
   timestamp: new Date().toISOString(),
 });
